@@ -1,3 +1,7 @@
+# Stealie SVG sources
+
+Where the vector Stealie files in `/assets` came from (Reddit thread and svgviewer.dev links).
+
 https://www.svgviewer.dev/s/lZ99VBsB
 
 https://www.reddit.com/r/gratefuldead/comments/7k16ee/comment/no3g4tv/

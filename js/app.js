@@ -1,88 +1,136 @@
 // app.js - Main orchestration
 import { initImageLoader } from './imageLoader.js';
 import { openCropModal, clearCropState } from './cropperModal.js';
-import { exportToPNG } from './exporter.js';
-
+import { renderStealiePNG, saveStealiePNG } from './exporter.js';
 import { STEALIE_GEOMETRY } from './constants.js';
 
-  const dropZone = document.getElementById('drop-zone');
-  const fileInput = document.getElementById('file-input');
-
-  // Load existing image if any (e.g. returning from recrop)
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
 const userCanvas = document.getElementById('user-image-canvas');
 const actionsDiv = document.getElementById('actions');
 const stealieImg = document.querySelector('.stealie-frame');
+const errorMessage = document.getElementById('error-message');
 
 const btnSave = document.getElementById('btn-save');
 const btnRecrop = document.getElementById('btn-recrop');
 const btnNew = document.getElementById('btn-new');
 
-let currentImage = null;
-let currentCroppedCanvas = null; // Store high-res canvas
+let currentImage = null;    // Image the shown crop came from (blob: URL owned by us)
+let pngBlob = null;         // Finished PNG, ready to share/download
+let pngPromise = null;      // In-progress render of the PNG
 
+// A new image only replaces the current one once the user presses Done,
+// so cancelling leaves the existing stealie untouched.
 function handleImageLoad(img) {
-  currentImage = img;
-  clearCropState(); // New image, fresh crop
-  openCropModal(img, handleCropComplete, false);
+  hideError();
+  openCropModal(
+    img,
+    (croppedCanvas) => {
+      if (currentImage && currentImage !== img) {
+        URL.revokeObjectURL(currentImage.src);
+      }
+      currentImage = img;
+      handleCropComplete(croppedCanvas);
+    },
+    () => URL.revokeObjectURL(img.src),
+    false
+  );
+}
+
+function recrop() {
+  openCropModal(currentImage, handleCropComplete, () => {}, true);
 }
 
 function handleCropComplete(croppedCanvas) {
-  // cropCanvas is now 1024x1024 (High Res)
-  currentCroppedCanvas = croppedCanvas;
   drawCroppedImage(croppedCanvas);
   dropZone.classList.add('has-image');
   actionsDiv.classList.remove('hidden');
+
+  // Build the PNG now, so pressing Save can share it immediately
+  pngBlob = null;
+  const promise = renderStealiePNG(stealieImg, croppedCanvas);
+  pngPromise = promise;
+  promise.then(
+    (blob) => {
+      if (pngPromise === promise) {
+        pngBlob = blob;
+      }
+    },
+    (err) => reportError(err, 'Rendering PNG failed')
+  );
 }
 
 function drawCroppedImage(croppedCanvas) {
   const ctx = userCanvas.getContext('2d');
   const { DISPLAY_SIZE, CENTER_X, CENTER_Y, RADIUS } = STEALIE_GEOMETRY;
 
-  userCanvas.width = DISPLAY_SIZE;
-  userCanvas.height = DISPLAY_SIZE;
+  // Draw at device resolution so the preview is sharp on high-DPI screens
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  userCanvas.width = DISPLAY_SIZE * dpr;
+  userCanvas.height = DISPLAY_SIZE * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingQuality = 'high';
 
   ctx.clearRect(0, 0, DISPLAY_SIZE, DISPLAY_SIZE);
-
   ctx.save();
   ctx.beginPath();
   ctx.arc(CENTER_X, CENTER_Y, RADIUS, 0, Math.PI * 2);
   ctx.clip();
-
-  const imgSize = RADIUS * 2;
-  ctx.drawImage(
-    croppedCanvas,
-    CENTER_X - RADIUS,
-    CENTER_Y - RADIUS,
-    imgSize,
-    imgSize
-  );
-
+  ctx.drawImage(croppedCanvas, CENTER_X - RADIUS, CENTER_Y - RADIUS, RADIUS * 2, RADIUS * 2);
   ctx.restore();
 }
 
 function resetState() {
   const ctx = userCanvas.getContext('2d');
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, userCanvas.width, userCanvas.height);
   dropZone.classList.remove('has-image');
   actionsDiv.classList.add('hidden');
+  if (currentImage) {
+    URL.revokeObjectURL(currentImage.src);
+  }
   currentImage = null;
-  currentCroppedCanvas = null;
-  fileInput.value = '';
+  pngBlob = null;
+  pngPromise = null;
+  clearCropState();
+}
+
+// Caught errors never reach Sentry on their own, so send them explicitly.
+// window.Sentry is missing when an ad blocker blocks the loader.
+function reportError(err, context) {
+  console.error(`${context}:`, err);
+  if (window.Sentry) {
+    window.Sentry.captureException(err, { tags: { context } });
+  }
+}
+
+function showError(message) {
+  errorMessage.textContent = message;
+  errorMessage.classList.remove('hidden');
+}
+
+function hideError() {
+  errorMessage.classList.add('hidden');
 }
 
 // Button handlers
-btnSave.addEventListener('click', () => {
-  if (currentCroppedCanvas) {
-    // Pass the high-res source instead of the low-res userCanvas
-    exportToPNG(stealieImg, currentCroppedCanvas);
-  } else {
-    exportToPNG(stealieImg, userCanvas);
+btnSave.addEventListener('click', async () => {
+  try {
+    // Normally the PNG is already rendered; waiting here can make
+    // mobile browsers refuse the share sheet, which falls back to a download.
+    const blob = pngBlob || (await pngPromise);
+    if (blob) {
+      await saveStealiePNG(blob);
+    }
+  } catch (err) {
+    reportError(err, 'Saving failed');
+    showError("Couldn't save your stealie. Please try again.");
   }
 });
 
 btnRecrop.addEventListener('click', () => {
   if (currentImage) {
-    openCropModal(currentImage, handleCropComplete, true); // Restore previous crop
+    recrop();
   }
 });
 
@@ -91,15 +139,21 @@ btnNew.addEventListener('click', () => {
   fileInput.click();
 });
 
-// Smart click handler
-dropZone.addEventListener('click', () => {
+// Click (or Enter/Space): edit the current image, or pick one if there is none
+function activateDropZone() {
   if (currentImage) {
-    // If image exists, open crop modal (restore state)
-    openCropModal(currentImage, handleCropComplete, true);
+    recrop();
   } else {
-    // If no image, open file picker
     fileInput.click();
+  }
+}
+
+dropZone.addEventListener('click', activateDropZone);
+dropZone.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    activateDropZone();
   }
 });
 
-initImageLoader(dropZone, fileInput, handleImageLoad);
+initImageLoader(dropZone, fileInput, handleImageLoad, showError);
