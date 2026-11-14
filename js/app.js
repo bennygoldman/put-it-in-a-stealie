@@ -56,7 +56,7 @@ function handleCropComplete(croppedCanvas) {
         pngBlob = blob;
       }
     },
-    (err) => console.error('Rendering PNG failed:', err)
+    (err) => reportError(err, 'Rendering PNG failed')
   );
 }
 
@@ -95,6 +95,15 @@ function resetState() {
   clearCropState();
 }
 
+// Caught errors never reach Sentry on their own, so send them explicitly.
+// window.Sentry is missing when an ad blocker blocks the loader.
+function reportError(err, context) {
+  console.error(`${context}:`, err);
+  if (window.Sentry) {
+    window.Sentry.captureException(err, { tags: { context } });
+  }
+}
+
 function showError(message) {
   errorMessage.textContent = message;
   errorMessage.classList.remove('hidden');
@@ -114,7 +123,7 @@ btnSave.addEventListener('click', async () => {
       await saveStealiePNG(blob);
     }
   } catch (err) {
-    console.error('Saving failed:', err);
+    reportError(err, 'Saving failed');
     showError("Couldn't save your stealie. Please try again.");
   }
 });

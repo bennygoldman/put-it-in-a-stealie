@@ -91,6 +91,9 @@ export async function saveStealiePNG(blob) {
       }
       // Any other failure falls through to a regular download
       console.warn('Share failed, falling back to download:', err);
+      if (window.Sentry) {
+        window.Sentry.captureException(err, { level: 'warning', tags: { context: 'share fallback' } });
+      }
     }
   }
 

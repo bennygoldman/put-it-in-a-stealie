@@ -193,6 +193,23 @@ footer a:hover {
   margin: 0 auto 0.5rem;
 }
 
+.privacy-note summary {
+  cursor: pointer;
+  list-style: none; /* Hide the disclosure triangle */
+}
+
+.privacy-note summary::-webkit-details-marker {
+  display: none;
+}
+
+.privacy-note summary:hover {
+  text-decoration: underline;
+}
+
+.privacy-note p {
+  margin-top: 0.25rem;
+}
+
 /* Modal */
 .modal {
   position: fixed;
