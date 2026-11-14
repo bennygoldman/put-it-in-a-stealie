@@ -1,12 +1,18 @@
 // cropperModal.js - Cropper.js integration
 
+import { CROP_SIZE } from './constants.js';
+
 let cropper = null;
 let cropperReady = false; // Guard against pre-ready interactions
 let isSliderDriven = false; // Prevent feedback loop
 let savedCropData = null; // Store crop state for recrop
 let savedCanvasData = null;
 
-export function openCropModal(img, onCropComplete, restoreState = false) {
+// Opens the crop modal for img.
+// onCropComplete(canvas) is called with a CROP_SIZE x CROP_SIZE canvas when the user presses Done.
+// onCancel() is called if the user cancels instead.
+// restoreState: reopen with the position/zoom from the last completed crop.
+export function openCropModal(img, onCropComplete, onCancel, restoreState = false) {
   const modal = document.getElementById('crop-modal');
   const cropImage = document.getElementById('crop-image');
   const cancelBtn = document.getElementById('crop-cancel');
@@ -15,57 +21,63 @@ export function openCropModal(img, onCropComplete, restoreState = false) {
   const zoomOutBtn = document.getElementById('zoom-out');
   const zoomInBtn = document.getElementById('zoom-in');
 
-  // Set image source
+  // Remember what had focus so we can return to it on close
+  const previouslyFocused = document.activeElement;
+
   cropImage.src = img.src;
   modal.classList.remove('hidden');
+  doneBtn.focus();
 
   cropperReady = false;
 
-  // Initialize Cropper
+  const sliderMin = () => parseFloat(zoomSlider.min);
+  const sliderMax = () => parseFloat(zoomSlider.max);
+  const clampZoom = (ratio) => Math.max(sliderMin(), Math.min(sliderMax(), ratio));
+
+  // Current zoom ratio (displayed size / natural size)
+  const currentZoom = () => {
+    const imageData = cropper.getImageData();
+    return imageData.width / imageData.naturalWidth;
+  };
+
   cropper = new Cropper(cropImage, {
     aspectRatio: 1,
     viewMode: 3, // Fill the container with the image
     dragMode: 'move', // Allow moving the image canvas
     cropBoxResizable: false, // Lock box size
     cropBoxMovable: false, // Lock box position
-    toggleDragModeOnDblclick: false, // specific to this interaction
+    toggleDragModeOnDblclick: false,
     autoCropArea: 1, // Start with max crop box
     background: false,
     guides: false,
     ready() {
-      // Restore previous crop state if recropping
+      // Read the "fit" zoom BEFORE restoring a previous crop, so the slider
+      // range is always based on the fully zoomed-out image.
+      // Scaling the range to the image fixes large phone photos (4000px+),
+      // where the fit ratio is tiny (~0.05) and a fixed 0-1 range zooms far too fast.
+      const fitZoom = currentZoom();
+      const minZoom = fitZoom;       // viewMode 3 can't zoom out past the fit anyway
+      const maxZoom = fitZoom * 3;   // 3x zoom is a reasonable max
+      zoomSlider.min = minZoom;
+      zoomSlider.max = maxZoom;
+      zoomSlider.step = (maxZoom - minZoom) / 100; // 100 smooth steps
+
       if (restoreState && savedCanvasData && savedCropData) {
         cropper.setCanvasData(savedCanvasData);
         cropper.setData(savedCropData);
       }
 
-      // Get initial zoom data
-      const imageData = cropper.getImageData();
-      const initialRatio = imageData.width / imageData.naturalWidth;
-
-      // Update slider range based on initial zoom
-      // This fixes mobile where large images (4000px+) had tiny initial ratios (0.05)
-      // causing the 0-1 slider to zoom way too fast (moving from 0.05 to 0.1 = 2x zoom)
-      const minZoom = initialRatio;       // Can't zoom out past initial fit
-      const maxZoom = initialRatio * 3;   // 3x zoom is reasonable max
-      zoomSlider.min = minZoom;
-      zoomSlider.max = maxZoom;
-      zoomSlider.step = (maxZoom - minZoom) / 100;  // 100 smooth steps
-      zoomSlider.value = initialRatio;
+      zoomSlider.value = clampZoom(currentZoom());
       cropperReady = true;
     },
     zoom(e) {
-      // Sync slider when zooming via pinch/scroll (not slider)
+      // Sync slider when zooming via pinch/scroll/buttons (not the slider itself)
       if (!isSliderDriven) {
-        // Clamp to slider range
-        const min = parseFloat(zoomSlider.min);
-        const max = parseFloat(zoomSlider.max);
-        zoomSlider.value = Math.max(min, Math.min(max, e.detail.ratio));
+        zoomSlider.value = clampZoom(e.detail.ratio);
       }
     },
   });
 
-  // Zoom slider handler
   const handleZoom = (e) => {
     if (cropper && cropperReady) {
       isSliderDriven = true;
@@ -74,53 +86,71 @@ export function openCropModal(img, onCropComplete, restoreState = false) {
     }
   };
 
-  const handleZoomIn = () => {
+  // +/- buttons move 10% of the slider range per click
+  const zoomBy = (direction) => {
     if (cropper && cropperReady) {
-      // Use 10% of slider range for consistent button behavior
-      const step = (parseFloat(zoomSlider.max) - parseFloat(zoomSlider.min)) / 10;
-      cropper.zoom(step);
+      const step = (sliderMax() - sliderMin()) / 10;
+      cropper.zoomTo(clampZoom(currentZoom() + direction * step));
     }
   };
+  const handleZoomIn = () => zoomBy(1);
+  const handleZoomOut = () => zoomBy(-1);
 
-  const handleZoomOut = () => {
-    if (cropper && cropperReady) {
-      // Use 10% of slider range for consistent button behavior
-      const step = (parseFloat(zoomSlider.max) - parseFloat(zoomSlider.min)) / 10;
-      cropper.zoom(-step);
-    }
-  };
-
-  // Cancel handler
   const handleCancel = () => {
-    closeCropModal();
-    cleanup();
+    close();
+    onCancel();
   };
 
-  // Done handler
   const handleDone = () => {
+    if (!cropperReady) {
+      return;
+    }
+
     // Save crop state for potential recrop
     savedCropData = cropper.getData();
     savedCanvasData = cropper.getCanvasData();
 
-    // Get high-res crop for quality
     const canvas = cropper.getCroppedCanvas({
-      width: 1024,
-      height: 1024,
+      width: CROP_SIZE,
+      height: CROP_SIZE,
       imageSmoothingEnabled: true,
       imageSmoothingQuality: 'high',
     });
 
-    // Track creation event (User finished cropping)
+    // Track creation event (user finished cropping)
     if (typeof window.gtag === 'function') {
       window.gtag('event', 'stealie_created', {
-        'event_category': 'engagement',
-        'event_label': 'crop_completed'
+        event_category: 'engagement',
+        event_label: 'crop_completed',
       });
     }
 
-    closeCropModal();
-    cleanup();
+    close();
     onCropComplete(canvas);
+  };
+
+  // Escape cancels; Tab stays inside the modal
+  const handleKeydown = (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      handleCancel();
+      return;
+    }
+    if (e.key === 'Tab') {
+      const focusable = [zoomOutBtn, zoomSlider, zoomInBtn, cancelBtn, doneBtn];
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      } else if (!modal.contains(document.activeElement)) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
   };
 
   zoomSlider.addEventListener('input', handleZoom);
@@ -128,26 +158,30 @@ export function openCropModal(img, onCropComplete, restoreState = false) {
   zoomOutBtn.addEventListener('click', handleZoomOut);
   cancelBtn.addEventListener('click', handleCancel);
   doneBtn.addEventListener('click', handleDone);
+  document.addEventListener('keydown', handleKeydown);
 
-  function cleanup() {
+  function close() {
     zoomSlider.removeEventListener('input', handleZoom);
     zoomInBtn.removeEventListener('click', handleZoomIn);
     zoomOutBtn.removeEventListener('click', handleZoomOut);
     cancelBtn.removeEventListener('click', handleCancel);
     doneBtn.removeEventListener('click', handleDone);
+    document.removeEventListener('keydown', handleKeydown);
+
+    modal.classList.add('hidden');
+    if (cropper) {
+      cropper.destroy();
+      cropper = null;
+    }
+    cropperReady = false;
+
+    if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
+      previouslyFocused.focus();
+    }
   }
 }
 
-function closeCropModal() {
-  const modal = document.getElementById('crop-modal');
-  modal.classList.add('hidden');
-  if (cropper) {
-    cropper.destroy();
-    cropper = null;
-  }
-}
-
-// Clear saved state for new image
+// Clear saved crop state (call when the current image is discarded)
 export function clearCropState() {
   savedCropData = null;
   savedCanvasData = null;

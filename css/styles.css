@@ -91,12 +91,14 @@ h1 {
   justify-content: center;
 }
 
+/* Covers exactly the hollow center (circle at 184,133 r=118 in the 360px SVG),
+   in percentages so it stays aligned when the drop zone shrinks on mobile */
 .drag-overlay {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  top: 4.17%;     /* (133 - 118) / 360 */
+  left: 18.33%;   /* (184 - 118) / 360 */
+  width: 65.56%;  /* 236 / 360 */
+  height: 65.56%;
   border-radius: 50%;
   pointer-events: none;
   z-index: 5;
@@ -106,19 +108,13 @@ h1 {
 
 /* Only show overlay on actual drag hover, NOT on click/active by default */
 .drop-zone.drag-over .drag-overlay {
-  background: radial-gradient(circle at 184px 133px,
-      rgba(204, 204, 204, 0.8) 0%,
-      rgba(204, 204, 204, 0.8) 118px,
-      transparent 119px);
+  background: rgba(204, 204, 204, 0.8);
 }
 
 /* Desktop-only click feedback */
 @media (hover: hover) {
   .drop-zone:active .drag-overlay {
-    background: radial-gradient(circle at 184px 133px,
-        rgba(204, 204, 204, 0.8) 0%,
-        rgba(204, 204, 204, 0.8) 118px,
-        transparent 119px);
+    background: rgba(204, 204, 204, 0.8);
   }
   
   .drop-zone:active {
@@ -144,13 +140,24 @@ h1 {
   display: none;
 }
 
+.drop-zone:focus-visible {
+  outline: 2px solid #1a1a1a;
+  outline-offset: 4px;
+}
+
+.error-message {
+  color: #b00020;
+  font-family: 'Zalando Sans', sans-serif;
+  margin-bottom: 1rem;
+}
+
 @media (max-width: 400px) {
   .drop-zone {
     width: 300px;
     height: 300px;
   }
   
-h1 {
+  h1 {
     font-size: 2.5rem;
     margin-bottom: 1rem;
   }
@@ -179,8 +186,12 @@ footer a:hover {
   text-decoration: underline;
 }
 
-/* Modal */
-
+.privacy-note {
+  font-size: 0.75rem;
+  color: #888;
+  max-width: 360px;
+  margin: 0 auto 0.5rem;
+}
 
 /* Modal */
 .modal {
@@ -218,9 +229,10 @@ footer a:hover {
   text-align: center;
 }
 
+/* Never wider than the modal can fit (90vw minus 1.5rem padding each side) */
 .crop-container {
-  width: 320px;
-  height: 320px;
+  width: min(320px, calc(90vw - 3rem));
+  height: min(320px, calc(90vw - 3rem));
   overflow: hidden;
   background: #e8e8e8;
   border-radius: 8px;
@@ -239,10 +251,19 @@ footer a:hover {
   padding: 0 0.5rem;
 }
 
-.zoom-label {
+.zoom-btn {
+  background: none;
+  border: none;
   color: #999;
   font-size: 1.25rem;
+  line-height: 1;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
   user-select: none;
+}
+
+.zoom-btn:hover {
+  color: #333;
 }
 
 #zoom-slider {
@@ -374,7 +395,7 @@ footer a:hover {
   }
 
   .crop-container {
-    width: 250px;
-    height: 250px;
+    width: min(250px, calc(90vw - 3rem));
+    height: min(250px, calc(90vw - 3rem));
   }
 }

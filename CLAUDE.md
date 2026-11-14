@@ -4,45 +4,46 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-"Put it in a Stealie" is a web application that allows users to place their own images inside the center of a Stealie (the Grateful Dead's "Steal Your Face" logo). Users can drag-and-drop or select an image, crop it to a circle, and export the completed composition as a transparent PNG.
+"Put it in a Stealie" (https://putitinastealie.org) is a static web app that lets users place their own image inside the center of a Stealie (the Grateful Dead's "Steal Your Face" logo). Users drag-and-drop or pick an image, position it in a circular crop, and save the result as a transparent PNG (Web Share sheet on mobile, download on desktop). Images are processed entirely in the browser.
 
 ## Key Assets
 
-- `/assets/stealie-bg-none-border-false-bolt-false-color-false.svg` - Primary SVG template (empty center, transparent background)
-- `/assets/stealie-bg-false-border-false-bolt-false-color-false-alt.png` - PNG version for reference
+- `assets/stealie-bg-none-border-false-bolt-false-color-false.svg` - The template used by the app (empty center, transparent background, 360x360 viewBox)
+- `assets/favicon.svg`, `assets/apple-touch-icon.png`, `assets/social-preview.png` - Icons and Open Graph image
+- Other `assets/stealie-*` files are unused variations kept for reference; `docs/svg-sources.md` records where the vectors came from
 
-The SVG uses a 360x360 viewBox with the hollow center where user images are composited.
+The hollow center is a circle at (184, 133) with radius 118 in SVG coordinates (`js/constants.js`). The drag overlay in `css/styles.css` uses the same circle expressed as percentages.
 
-## Architecture Notes
+## File Overview
 
-This is a greenfield project. The concept.md specifies:
-- Single-page web app (desktop + mobile)
-- Image upload via drag-and-drop or file picker
-- Circular crop interface for the center area
-- Export to transparent PNG
-- Simple, clean UI aimed at early-to-mid stage developer readability
+- `index.html` - Page markup, SEO/OG tags, Google Analytics and Sentry loader
+- `js/app.js` - Orchestration and state (current image, pre-rendered PNG)
+- `js/imageLoader.js` - Drag-drop and file picker handling (object URLs, error reporting)
+- `js/cropperModal.js` - Crop modal built on Cropper.js (zoom slider/buttons, recrop state, keyboard handling)
+- `js/exporter.js` - `renderStealiePNG` (canvas compositing) and `saveStealiePNG` (share/download)
+- `js/constants.js` - Stealie geometry and crop output size
+- `vendor/cropper.min.{js,css}` - Vendored Cropper.js v1.6.1 (loaded as a global script)
+
+## Notes
+
+- The PNG is rendered as soon as a crop completes, so the Save click can call `navigator.share()` immediately. Mobile browsers reject share calls that happen too long after the tap.
+- Analytics events: `stealie_created` (crop completed) and `generate_stealie` (saved; label is `share` or `download`).
 
 ## Development
 
-No build step required. Open `index.html` directly in a browser.
+No build step. Serve the folder locally (ES modules need http, not file://):
 
-**Local server (optional, for ES modules in some browsers):**
 ```bash
 python3 -m http.server 8000
 # Then open http://localhost:8000
 ```
 
+Deployed on Netlify from the repo root (`netlify.toml`), so every file in the repo is publicly served.
+
 ## Testing
 
-Manual testing only for MVP. See `docs/plans/2026-01-16-mvp-design.md` for test checklist.
-
-## File Overview
-
-- `js/app.js` - Main orchestration and state management
-- `js/imageLoader.js` - Drag-drop and file picker handling
-- `js/cropperModal.js` - Cropper.js integration
-- `js/exporter.js` - PNG export via Canvas API
+Manual testing only. See `docs/plans/2026-01-16-mvp-design.md` for the test checklist.
 
 ## Development Approach
 
-Per concept.md, use popular, well-maintained libraries. The codebase should prioritize clarity and simplicity over cleverness.
+Use popular, well-maintained libraries. Prioritize clarity and simplicity over cleverness; the code should be readable for early-to-mid stage developers.

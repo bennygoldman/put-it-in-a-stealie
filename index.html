@@ -74,10 +74,11 @@
     crossorigin="anonymous"
   ></script>
   <script>
-    Sentry.onLoad(function() {
+    // Guard: ad blockers often block the Sentry loader script
+    if (window.Sentry) Sentry.onLoad(function() {
       Sentry.init({
         // Tracing
-        tracesSampleRate: 1.0, // Capture 100% of the transactions
+        tracesSampleRate: 0.1, // Capture 10% of transactions
         // Session Replay
         replaysSessionSampleRate: 0.1, // Sample 10% of sessions
         replaysOnErrorSampleRate: 1.0, // Sample 100% of sessions with errors
@@ -90,9 +91,9 @@
   <main class="container">
     <h1>Put it in a Stealie</h1>
     <div id="stealie-container" class="stealie-container">
-      <div id="drop-zone" class="drop-zone">
+      <div id="drop-zone" class="drop-zone" role="button" tabindex="0" aria-label="Choose an image to put in the stealie">
         <img src="assets/stealie-bg-none-border-false-bolt-false-color-false.svg" alt="Grateful Dead Steal Your Face Stealie logo template" class="stealie-frame">
-        <div class="drop-indicator">
+        <div class="drop-indicator" aria-hidden="true">
           <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="5" x2="12" y2="19"></line>
             <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -102,8 +103,9 @@
         <div class="drag-overlay"></div>
       </div>
     </div>
+    <p id="error-message" class="error-message hidden" role="alert"></p>
     <div id="actions" class="actions hidden">
-      <button id="btn-save" class="btn btn-icon" title="Save PNG">
+      <button id="btn-save" class="btn btn-icon" title="Save PNG" aria-label="Save PNG">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -111,14 +113,14 @@
           <line x1="12" y1="15" x2="12" y2="3"></line>
         </svg>
       </button>
-      <button id="btn-recrop" class="btn btn-icon" title="Recrop">
+      <button id="btn-recrop" class="btn btn-icon" title="Recrop" aria-label="Recrop">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M6 2v14a2 2 0 0 0 2 2h14"></path>
           <path d="M18 22V8a2 2 0 0 0-2-2H2"></path>
         </svg>
       </button>
-      <button id="btn-new" class="btn btn-icon" title="New Image">
+      <button id="btn-new" class="btn btn-icon" title="New Image" aria-label="New image">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10"></circle>
@@ -129,23 +131,24 @@
     </div>
     <input type="file" id="file-input" accept="image/*" class="hidden">
     <footer>
+      <p class="privacy-note">Your images stay in your browser and are never uploaded. Anonymous usage and error data is collected with Google Analytics and Sentry.</p>
       by <a href="https://pods.link/greatnorthspecial" target="_blank" rel="noopener noreferrer" onclick="gtag('event', 'click_credit', {'event_category': 'outbound', 'event_label': 'billy_sunday'})">Billy Sunday</a>
     </footer>
   </main>
   <div id="crop-modal" class="modal hidden">
-    <div class="modal-content">
-      <h2 class="modal-title">Position your image</h2>
+    <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="crop-title">
+      <h2 id="crop-title" class="modal-title">Position your image</h2>
       <div class="crop-container">
-        <img id="crop-image" src="" alt="Crop preview">
+        <img id="crop-image" alt="Crop preview">
       </div>
       <div class="zoom-control">
-        <span id="zoom-out" class="zoom-label" style="cursor: pointer;">−</span>
-        <input type="range" id="zoom-slider" min="0" max="1" step="0.01" value="0">
-        <span id="zoom-in" class="zoom-label" style="cursor: pointer;">+</span>
+        <button type="button" id="zoom-out" class="zoom-btn" aria-label="Zoom out">−</button>
+        <input type="range" id="zoom-slider" min="0" max="1" step="0.01" value="0" aria-label="Zoom">
+        <button type="button" id="zoom-in" class="zoom-btn" aria-label="Zoom in">+</button>
       </div>
       <div class="modal-actions">
-        <button id="crop-cancel" class="btn btn-ghost">Cancel</button>
-        <button id="crop-done" class="btn btn-primary">Done</button>
+        <button type="button" id="crop-cancel" class="btn btn-ghost">Cancel</button>
+        <button type="button" id="crop-done" class="btn btn-primary">Done</button>
       </div>
     </div>
   </div>

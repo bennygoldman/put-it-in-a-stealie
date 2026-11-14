@@ -3,6 +3,5 @@ Allow: /
 
 # Exclude non-content files
 Disallow: /vendor/
-Disallow: /test-zoom-slider.html
 
 Sitemap: https://putitinastealie.org/sitemap.xml
